@@ -1,20 +1,30 @@
 import axios from 'axios';
 
-const API_BASE = '/api/v1';
+/**
+ * IMPORTANT:
+ * VITE_API_URL must be defined in .env
+ * Example:
+ * VITE_API_URL=https://crimson1232-dhartisetu-backend.hf.space
+ */
+const API_BASE = `${import.meta.env.VITE_API_URL}/api/v1`;
 
-// Create axios instance with better defaults
+// Create axios instance
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 60000, // 60 seconds for image uploads
+  timeout: 120000, // 2 minutes (safe for ML image inference)
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor
+// --------------------------------------------------
+// REQUEST INTERCEPTOR
+// --------------------------------------------------
 api.interceptors.request.use(
   (config) => {
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    console.log(
+      `[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`
+    );
     return config;
   },
   (error) => {
@@ -23,209 +33,206 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor with better error handling
+// --------------------------------------------------
+// RESPONSE INTERCEPTOR
+// --------------------------------------------------
 api.interceptors.response.use(
-  (response) => {
-    return response.data;
-  },
+  (response) => response.data,
   (error) => {
-    console.error('API Error:', error.response?.data || error.message);
-    
-    // Return a structured error
-    const message = error.response?.data?.detail || 
-                   error.response?.data?.message || 
-                   error.message || 
-                   'An error occurred';
-    
-    // Don't reject, return error response for graceful handling
+    console.error('API Error:', error?.response?.data || error.message);
+
     return {
       success: false,
       error: true,
-      message: message,
-      data: null
+      message:
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error.message ||
+        'Server error',
+      data: null,
     };
   }
 );
 
-// Helper to handle API responses
+// --------------------------------------------------
+// HELPER
+// --------------------------------------------------
 const handleResponse = (response) => {
-  if (response.error) {
-    throw new Error(response.message);
+  if (!response || response.error) {
+    throw new Error(response?.message || 'API Error');
   }
   return response;
 };
 
-// Location APIs
+// ==================================================
+// LOCATION APIs
+// ==================================================
 export const locationAPI = {
   reverseGeocode: async (latitude, longitude) => {
     try {
-      const response = await api.post('/location/reverse', { latitude, longitude });
+      const response = await api.post('/location/reverse', {
+        latitude,
+        longitude,
+      });
       return handleResponse(response);
-    } catch (e) {
-      console.error('Geocode error:', e);
+    } catch {
       return { city: 'Unknown', district: 'Unknown', state: 'Unknown' };
     }
   },
-  
+
   getStates: async () => {
     try {
       return await api.get('/location/states');
-    } catch (e) {
+    } catch {
       return { states: [] };
     }
   },
-  
+
   getSubdivisions: async () => {
     try {
       return await api.get('/location/subdivisions');
-    } catch (e) {
+    } catch {
       return { subdivisions: [] };
     }
   },
 };
 
-// Plant Disease API
+// ==================================================
+// 🌱 PLANT DISEASE (YOUR MAIN ATTRACTION)
+// ==================================================
 export const plantDiseaseAPI = {
   detect: async (file, language = 'en') => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('language', language);
-    
-    const response = await api.post('/plant-disease/detect', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 120000, // 2 minutes for image processing
-    });
-    
+
+    const response = await api.post(
+      '/plant-disease/detect',
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000,
+      }
+    );
+
     return handleResponse(response);
   },
-  
+
   detectBase64: async (imageData, language = 'en') => {
-    const response = await api.post('/plant-disease/detect-base64', { 
-      image_data: imageData, 
-      language 
+    const response = await api.post('/plant-disease/detect-base64', {
+      image_data: imageData,
+      language,
     });
     return handleResponse(response);
   },
 };
 
-// Soil APIs
+// ==================================================
+// SOIL APIs
+// ==================================================
 export const soilAPI = {
   detectType: async (file, language = 'en') => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('language', language);
-    
+
     const response = await api.post('/soil/detect', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 120000,
     });
-    
+
     return handleResponse(response);
   },
-  
-  getSoilTypes: async (language = 'en') => {
-    try {
-      return await api.get('/soil/types', { params: { language } });
-    } catch (e) {
-      return { soil_types: [] };
-    }
-  },
-  
+
   assessHealth: async (data) => {
     const response = await api.post('/soil-health/assess', data);
     return handleResponse(response);
   },
 };
 
-// Crop APIs
+// ==================================================
+// CROP APIs
+// ==================================================
 export const cropAPI = {
   recommend: async (data) => {
     const response = await api.post('/crop/recommend', data);
     return handleResponse(response);
   },
-  
-getCropList: async () => {
-  try {
-    return await api.get('/yield/crops');
-  } catch (e) {
-    return { crops: [] };
-  }
-},
 
+  getCropList: async () => {
+    try {
+      return await api.get('/yield/crops');
+    } catch {
+      return { crops: [] };
+    }
+  },
 };
 
-// Weather & Risk APIs
+// ==================================================
+// WEATHER & ENVIRONMENT
+// ==================================================
 export const weatherAPI = {
   predictFlood: async (data) => {
     const response = await api.post('/flood/predict', data);
     return handleResponse(response);
   },
-  
+
   predictStorm: async (data) => {
     const response = await api.post('/storm/predict', data);
     return handleResponse(response);
   },
-  
+
   predictRainfall: async (data) => {
     const response = await api.post('/rainfall/predict', data);
     return handleResponse(response);
   },
-  
+
   predictAQI: async (data) => {
     const response = await api.post('/aqi/predict', data);
     return handleResponse(response);
   },
-  
+
   predictCO2: async (data) => {
     const response = await api.post('/co2/predict', data);
     return handleResponse(response);
   },
-  
-  analyzeNDVI: async (data) => {
-    const response = await api.post('/ndvi/analyze', data);
-    return handleResponse(response);
-  },
 };
 
-// Market & Finance APIs
+// ==================================================
+// MARKET & FINANCE
+// ==================================================
 export const marketAPI = {
   predictYield: async (data) => {
     const response = await api.post('/yield/predict', data);
     return handleResponse(response);
   },
-  
+
   getSeasons: async () => {
     try {
       return await api.get('/yield/seasons');
-    } catch (e) {
+    } catch {
       return { seasons: [] };
     }
   },
-  
+
   predictPrice: async (data) => {
     const response = await api.post('/price/predict', data);
     return handleResponse(response);
   },
-  
+
   calculateProfit: async (data) => {
     const response = await api.post('/profit/calculate', data);
     return handleResponse(response);
   },
 };
 
-// Water Management APIs
+// ==================================================
+// WATER MANAGEMENT
+// ==================================================
 export const waterAPI = {
   calculateRequirement: async (data) => {
     const response = await api.post('/water/calculate', data);
     return handleResponse(response);
-  },
-  
-  getGrowthStages: async (language = 'en') => {
-    try {
-      return await api.get('/water/growth-stages', { params: { language } });
-    } catch (e) {
-      return { stages: [] };
-    }
   },
 };
 
